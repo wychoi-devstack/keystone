@@ -126,38 +126,91 @@ def configure_project_domain(shadow_project, idp_domain_id,
 def handle_projects_from_mapping(shadow_projects, idp_domain_id,
                                  existing_roles, user, assignment_api,
                                  resource_api):
-    for shadow_project in shadow_projects:
-        configure_project_domain(
-            shadow_project, idp_domain_id, resource_api)
-        try:
-            # Check and see if the project already exists and if it
-            # does not, try to create it.
-            project = resource_api.get_project_by_name(
-                shadow_project['name'], shadow_project['domain']['id']
-            )
-        except exception.ProjectNotFound:
-            LOG.info(
-                'Project %(project_name)s does not exist. It will be '
-                'automatically provisioning for user %(user_id)s.',
-                {'project_name': shadow_project['name'],
-                 'user_id': user['id']}
-            )
-            project_ref = {
-                'id': uuid.uuid4().hex,
-                'name': shadow_project['name'],
-                'domain_id': shadow_project['domain']['id']
-            }
-            project = resource_api.create_project(
-                project_ref['id'],
-                project_ref
-            )
-        shadow_roles = shadow_project['roles']
-        for shadow_role in shadow_roles:
-            assignment_api.create_grant(
-                existing_roles[shadow_role['name']]['id'],
-                user_id=user['id'],
-                project_id=project['id']
-            )
+    for projects in shadow_project:
+        for shadow_project in projects['name']:
+            try:
+                project = resource_api.get_project_by_name(
+                    shadow_project, idp_domain_id
+                )
+            except exception.ProjectNotFound:
+                LOG.info(
+                    'Project %(project_name)s does not exist. It will be '
+                    'automatically provisioning for user %(user_id)s.',
+                    #'project_name': shadow_project['name'],
+                    {'project_name': shadow_project,
+                    'user_id': user['id']}
+                )
+                project_ref = {
+                    'id': uuid.uuid4().hex,
+                    'name': shadow_project,
+                    'domain_id': idp_domain_id
+                }
+                project = resource_api.create_project(
+                    project_ref['id'],
+                    project_ref
+                )
+
+            shadow_roles = projects['roles'][0]['name']
+            for shadow_role in shadow_roles:
+                group = shadow_role.split("@")
+                project_name = group[0]
+                shadow_role = group[1]
+                if shadow_role == 'viewer':
+                    shadow_role = 'reader'
+                elif shadow_role == 'admin':
+                    shadow_role = 'project_admin'
+                elif shadow_role == 'editor':
+                    shadow_role = 'member'
+
+                if project_name != shadow_project:
+                    continue
+                assignment_api.create_grant(
+                    #existing_roles[shadow_role['name']]['id'],
+                    existing_roles[shadow_role]['id'],
+                    user_id=user['id'],
+                    project_id=project['id']
+                )
+                if shadow_role == 'project_admin':
+                    assignment_api.create_grant(
+                        #existing_roles[shadow_role['name']]['id'],
+                        existing_roles['project_admin']['id'],
+                        user_id=user['id'],
+                        project_id=project['id']
+                    )
+
+
+##    for shadow_project in shadow_projects:
+##        configure_project_domain(
+##            shadow_project, idp_domain_id, resource_api)
+##        try:
+##            # Check and see if the project already exists and if it
+##            # does not, try to create it.
+##            project = resource_api.get_project_by_name(
+##                shadow_project['name'], shadow_project['domain']['id']
+##            )
+##        except exception.ProjectNotFound:
+##            LOG.info(
+##                'Project %(project_name)s does not exist. It will be '
+##                'automatically provisioning for user %(user_id)s.',
+##                {'project_name': shadow_project['name'],
+##                 'user_id': user['id']}
+##            )
+##            project_ref = {
+##                'id': uuid.uuid4().hex,
+##                'name': shadow_project['name'],
+##                'domain_id': shadow_project['domain']['id']
+##            }
+##            project = resource_api.create_project(
+##                project_ref['id'],
+##                project_ref
+##            )
+##        shadow_roles = shadow_project['roles']
+##        for shadow_role in shadow_roles:
+##            assignment_api.create_grant(
+##                existing_roles[shadow_role['name']]['id'],
+##                user_id=user['id'],
+##                project_id=project['id']
+##            )
 
 
 def handle_unscoped_token(auth_payload, resource_api, federation_api,
@@ -167,33 +220,88 @@ def handle_unscoped_token(auth_payload, resource_api, federation_api,
                                 user_domain_id, idp_id):
         # Validate that the roles in the shadow mapping actually exist. If
         # they don't we should bail early before creating anything.
-        for shadow_project in shadow_projects:
-            for shadow_role in shadow_project['roles']:
-                # The role in the project mapping must exist in order for it to
-                # be useful.
-                if shadow_role['name'] not in existing_roles:
-                    LOG.error(
-                        'Role %s was specified in the mapping but does '
-                        'not exist. All roles specified in a mapping must '
-                        'exist before assignment.',
-                        shadow_role['name']
-                    )
-                    # NOTE(lbragstad): The RoleNotFound exception usually
-                    # expects a role_id as the parameter, but in this case we
-                    # only have a name so we'll pass that instead.
-                    raise exception.RoleNotFound(shadow_role['name'])
-                role = existing_roles[shadow_role['name']]
-                if (role['domain_id'] is not None and
-                        role['domain_id'] != user_domain_id):
-                    LOG.error(
-                        'Role %(role)s is a domain-specific role and '
-                        'cannot be assigned within %(domain)s.',
-                        {'role': shadow_role['name'], 'domain': user_domain_id}
-                    )
-                    raise exception.DomainSpecificRoleNotWithinIdPDomain(
-                        role_name=shadow_role['name'],
-                        identity_provider=idp_id
-                    )
+##        for shadow_project in shadow_projects:
+##            for shadow_role in shadow_project['roles']:
+##                # The role in the project mapping must exist in order for it to
+##                # be useful.
+##                if shadow_role['name'] not in existing_roles:
+##                    LOG.error(
+##                        'Role %s was specified in the mapping but does '
+##                        'not exist. All roles specified in a mapping must '
+##                        'exist before assignment.',
+##                        shadow_role['name']
+##                    )
+##                    # NOTE(lbragstad): The RoleNotFound exception usually
+##                    # expects a role_id as the parameter, but in this case we
+##                    # only have a name so we'll pass that instead.
+##                    raise exception.RoleNotFound(shadow_role['name'])
+##                role = existing_roles[shadow_role['name']]
+##                if (role['domain_id'] is not None and
+##                        role['domain_id'] != user_domain_id):
+##                    LOG.error(
+##                        'Role %(role)s is a domain-specific role and '
+##                        'cannot be assigned within %(domain)s.',
+##                        {'role': shadow_role['name'], 'domain': user_domain_id}
+##                    )
+##                    raise exception.DomainSpecificRoleNotWithinIdPDomain(
+##                        role_name=shadow_role['name'],
+##                        identity_provider=idp_id
+##                    )
+        for projects in shadow_projects:
+            roles = projects['roles'][0]['name']
+            if "[" not in roles:
+                projects['roles'][0]['name'] = [roles]
+            else:
+                projects['roles'][0]['name'] = eval(roles)
+
+            _projects = projects['name']
+            if "[" not in _projects:
+                projects['name'] = [_projects]
+            else:
+                projects['name'] = eval(_projects)
+
+            for shadow_project in projects['name']:
+                for shadow_role in projects['roles'][0]['name']:
+                    group = shadow_role.split("@")
+                    project_name = group[0]
+                    shadow_role = group[1]
+                    if shadow_role == 'viewer':
+                        shadow_role == 'reader'
+                    elif shadow_role == 'admin':
+                        shadow_role = 'project_admin'
+                    elif shadow_role == 'editor':
+                        shadow_role = 'member'
+
+                    if project_name != shadow_project:
+                        continue
+
+                    if shadow_role not in existing_roles:
+                         #if isinstance(shadow_role['name'], list):
+                        LOG.error(
+                            'Role %s was specified in the mapping but does '
+                            'not exist. All roles specified in a mapping must '
+                            'exist before assignment.',
+                            #hadow_role['name']
+                            shadow_role
+                        )
+                        # NOTE(lbragstad): The RoleNotFound exception usually
+                        # expects a role_id as the parameter, but in this case we
+                        # only have a name so we'll pass that instead.
+                        #raise exception.RoleNotFound(shadow_role['name'])
+                        raise exception.RoleNotFound(shadow_role)
+
+                role = existing_roles[shadow_role]
+                if role['domain_id'] is not None and
+                            role['domain_id'] != idp_domain_id):
+                        LOG.error(
+                            'Role %(role)s is a domain-specific role and '
+                            'cannot be assigned within %(domain)s.',
+                            {'role': shadow_role, 'domain': idp_domain_id}
+                        )
+                        raise exception.DomainSpecificRoleNotWithinIdPDomain(
+                            role_name=shadow_role,
+                            identity_provider=idp_id
+                        )
 
     def is_ephemeral_user(mapped_properties):
         return mapped_properties['user']['type'] == utils.UserType.EPHEMERAL
