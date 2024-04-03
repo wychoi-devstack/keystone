@@ -271,6 +271,56 @@ def handle_unscoped_token(auth_payload, resource_api, federation_api,
                 # mapping and what it's saying to create. If there is something
                 # wrong with how the mapping is, we should bail early before we
                 # create anything.
+                
+                ## add
+                changed_projs = [] # group에서 project 이름 파싱
+                cnt = 0 # project 배열 인덱스
+                # project가 배열로 주어질 때만 실행
+                if mapped_properties['projects'][0]['name'][0] == '[':
+                    original_projs = eval(mapped_properties['projects'][0]['name']) # 파싱 전 project 배열
+                    original_roles = [] # 파싱 전 project 별 역할
+                    if mapped_properties['projects'][0]['roles'][0]['name'][0] == '[':
+                        original_roles = eval(mapped_properties['projects'][0]['roles'][0]['name'])
+                    for proj in original_projs:
+                        cnt2 = 0 # role 배열 인덱스
+                        changed_roles = [] # group 이름에서 파싱한 role 배열
+                        current_proj = proj.split('/')[2]  # group에서 project 이름 추출 
+                        if current_proj in changed_projs: 
+                            continue
+                        changed_projs.append(current_proj)
+                        for role in original_roles: 
+                            role_proj = role.split('/')[2] # group 이름에서  role이 부여된 project 추출
+                            if current_proj == role_proj:
+                                temp_role = role.split('/')[1] # group 이름에서 project에 대한 role 추출
+                                # role 이름 openstack 기준으로 변경
+                                if temp_role == 'admin':
+                                    changed_roles.append('project_admin')
+                                    changed_roles.append('member')
+                                elif temp_role == 'editor':
+                                    changed_roles.append('member')
+                                elif temp_role == 'viewer':
+                                    changed_roles.append('reader')
+
+                        proj_dict = {}  # projects 배열에 추가할 project 정보를 담은 dictionary
+                        role_dict = {} # proj_dict애 추가할role dictionary 
+                        if cnt == 0:
+                            mapped_properties['projects'][cnt]['name'] = current_proj
+                        else: 
+                            proj_dict['name'] = current_proj
+                            proj_dict['roles'] = [{'name': ''}]
+                            mapped_properties['projects'].append(proj_dict)
+
+                        for role in changed_roles:
+                            if cnt2 == 0:
+                                mapped_properties['projects'][cnt]['roles'][cnt2]['name'] = role
+                            else:
+                                role_dict['name'] = role
+                                mapped_properties['projects'][cnt]['roles'].append(role_dict)
+                            cnt2 += 1
+                        cnt += 1
+
+                LOG.info('*** projects %s', mapped_properties['projects'])
+
 
                 validate_shadow_mapping(
                     mapped_properties['projects'],
